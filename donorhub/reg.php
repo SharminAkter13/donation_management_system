@@ -1,6 +1,7 @@
 <?php
 session_start();
-require 'config.php';
+require 'config.php'; // Your DB connection
+
 $errors = [];
 
 if (isset($_POST['submit'])) {
@@ -9,13 +10,20 @@ if (isset($_POST['submit'])) {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
+    $selected_role = intval($_POST['role_id'] ?? 0);
 
     // Validation
-    if (!$first_name || !$last_name || !$email || !$password || !$confirm_password) {
+    if (!$first_name || !$last_name || !$email || !$password || !$confirm_password || !$selected_role) {
         $errors[] = "All fields are required.";
     }
     if ($password !== $confirm_password) {
         $errors[] = "Passwords do not match.";
+    }
+
+    // Allowed roles for users (exclude admin = 1)
+    $allowed_roles = [2,3,4,5]; // donor, volunteer, campaign manager, beneficiary
+    if (!in_array($selected_role, $allowed_roles)) {
+        $errors[] = "Invalid role selected.";
     }
 
     // Check if email already exists
@@ -33,9 +41,19 @@ if (isset($_POST['submit'])) {
     // Register user
     if (empty($errors)) {
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-        $role_id = 2; // Example: 1=admin, 2=donor/beneficiary etc.
-        $stmt = $dms->prepare("INSERT INTO users (first_name, last_name, email, password, role_id) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssi", $first_name, $last_name, $email, $hashed_password, $role_id);
+
+        // Default role for login (donor)
+        $default_role_id = 2;
+
+        // If user selects donor, no approval needed
+        $requested_role_id = ($selected_role != $default_role_id) ? $selected_role : NULL;
+
+        $stmt = $dms->prepare(
+            "INSERT INTO users (first_name, last_name, email, password, role_id, requested_role_id)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+        $stmt->bind_param("ssssii", $first_name, $last_name, $email, $hashed_password, $default_role_id, $requested_role_id);
+
         if ($stmt->execute()) {
             $_SESSION['success'] = "Registration successful! Please log in.";
             header("Location: login.php");
@@ -54,70 +72,61 @@ if (isset($_POST['submit'])) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DonorHub | Register</title>
- <link href="assets/img/img/main-logo.png" rel="icon">
-    <!-- Google Fonts -->
+    <link href="assets/img/img/main-logo.png" rel="icon">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="assets/plugins/fontawesome-free/css/all.min.css">
-    <!-- icheck bootstrap -->
     <link rel="stylesheet" href="assets/plugins/icheck-bootstrap/icheck-bootstrap.min.css">
-    <!-- AdminLTE -->
     <link rel="stylesheet" href="assets/dist/css/adminlte.min.css">
 
 <style>
-    body {
-    /* Background image */
-    background-image: url('/assets/img/bg.png'); /* Replace with your image path */
-    background-size: cover;      /* Make the image cover the entire screen */
-    background-position: center; /* Center the image */
-    background-repeat: no-repeat;/* Prevent tiling */
+body {
+    background-image: url('/assets/img/bg.png'); 
+    background-size: cover;      
+    background-position: center;
+    background-repeat: no-repeat;
     height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
 }
-
-/* Optional: add a dark overlay for readability */
 body::before {
     content: '';
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    background: rgba(4, 90, 93, 0.6); /* semi-transparent overlay */
+    background: rgba(4, 90, 93, 0.6); 
     z-index: 0;
 }
-    .register-box {
-        width: 400px;
-        z-index: 1;
-
-    }
-    .card {
-        border-radius: 15px;
-    }
-    .input-group-text {
-        background: #fff;
-        border: 1px solid #045a5d;
-    }
-    .input-group-text i {
-        color: #cf983e!important; /* Logo teal color for icons */
-        font-size: 1.1rem;
-    }
-    .toggle-password i {
-        color: #cf983e; /* Gold color for toggle icon for emphasis */
-    }
-    .btn-primary {
-        background-color: #045a5d;
-        border-color: #cf983e;
-        font-weight: 600;
-        border-radius: 6px;
-    }
-    .btn-primary:hover {
-        background-color: #cf983e;
-        border-color: #045a5d;
-        color: #fff;
-    }
+.register-box {
+    width: 400px;
+    z-index: 1;
+}
+.card {
+    border-radius: 15px;
+}
+.input-group-text {
+    background: #fff;
+    border: 1px solid #045a5d;
+}
+.input-group-text i {
+    color: #cf983e!important;
+    font-size: 1.1rem;
+}
+.toggle-password i {
+    color: #cf983e; 
+}
+.btn-primary {
+    background-color: #045a5d;
+    border-color: #cf983e;
+    font-weight: 600;
+    border-radius: 6px;
+}
+.btn-primary:hover {
+    background-color: #cf983e;
+    border-color: #045a5d;
+    color: #fff;
+}
 </style>
-
 </head>
 <body>
 
@@ -178,6 +187,18 @@ body::before {
                     <span class="input-group-text bg-white toggle-password"><i class="fas fa-eye"></i></span>
                 </div>
 
+                <!-- Role Selection -->
+                <div class="input-group mb-3">
+                    <span class="input-group-text bg-white"><i class="fas fa-user-tag text-primary"></i></span>
+                    <select name="role_id" class="form-control" required>
+                        <option value="">Select Role</option>
+                        <option value="2">Donor</option>
+                        <option value="3">Volunteer</option>
+                        <option value="4">Campaign Manager</option>
+                        <option value="5">Beneficiary</option>
+                    </select>
+                </div>
+
                 <!-- Submit Button -->
                 <div class="row">
                     <div class="col-12">
@@ -196,27 +217,26 @@ body::before {
     </div>
 </div>
 
-<!-- Scripts -->
 <script src="assets/plugins/jquery/jquery.min.js"></script>
 <script src="assets/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="assets/dist/js/adminlte.min.js"></script>
 
 <script>
-    document.querySelectorAll('.toggle-password').forEach(el => {
-        el.addEventListener('click', function () {
-            const input = this.closest('.input-group').querySelector('input');
-            const icon = this.querySelector('i');
-            if (input.type === "password") {
-                input.type = "text";
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
-            } else {
-                input.type = "password";
-                icon.classList.add('fa-eye');
-                icon.classList.remove('fa-eye-slash');
-            }
-        });
+document.querySelectorAll('.toggle-password').forEach(el => {
+    el.addEventListener('click', function () {
+        const input = this.closest('.input-group').querySelector('input');
+        const icon = this.querySelector('i');
+        if (input.type === "password") {
+            input.type = "text";
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            input.type = "password";
+            icon.classList.add('fa-eye');
+            icon.classList.remove('fa-eye-slash');
+        }
     });
+});
 </script>
 
 </body>
