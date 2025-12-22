@@ -4,7 +4,7 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-$dashboard_link = "dashboard.php"; // Default dashboard link
+$dashboard_link = "dashboard.php"; 
 
 if (isset($_SESSION['user_role'])) {
     switch ($_SESSION['user_role']) {
